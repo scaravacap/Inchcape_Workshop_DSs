@@ -1,0 +1,61 @@
+# Bundle del modelo de demanda de repuestos, Inchcape Andina.
+#
+# Este archivo NO se despliega en Free Edition. Está acá para llevárselo a su
+# entorno y para la conversación del Paso 6: la diferencia entre dev y prod es
+# lo que hay que discutir, no la sintaxis.
+#
+#   databricks bundle validate -t dev
+#   databricks bundle deploy -t dev
+#   databricks bundle run job_scoring -t dev
+
+bundle:
+  name: inchcape_demanda
+
+include:
+  - resources/*.yml
+
+variables:
+  catalogo:
+    description: Catálogo donde viven las tablas y el modelo.
+    default: inchcape_workshop
+  esquema_ml:
+    description: Esquema de trabajo de ciencia de datos.
+    default: ml
+  modelo:
+    description: Nombre del modelo en Unity Catalog, sin catálogo ni esquema.
+    default: demanda_repuestos
+  correo_alertas:
+    description: Buzón que recibe las fallas de los jobs.
+    default: data-science-andina@inchcape.com
+
+targets:
+  # Desarrollo. Cada persona despliega su propia copia en su carpeta de usuario,
+  # los recursos quedan prefijados con su nombre y los jobs nacen pausados.
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-XXXXXXXXXXXXXXXX.XX.azuredatabricks.net
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalogo: inchcape_dev
+      esquema_ml: ml
+
+  # Producción. Corre con una identidad de servicio, no con la de una persona.
+  # Un job de producción atado al usuario de alguien es un incidente esperando
+  # la renuncia de esa persona.
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-XXXXXXXXXXXXXXXX.XX.azuredatabricks.net
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: sp-inchcape-datascience
+    variables:
+      catalogo: inchcape_workshop
+      esquema_ml: ml
+    permissions:
+      - level: CAN_VIEW
+        group_name: negocio-posventa
+      - level: CAN_MANAGE
+        group_name: data-science-andina

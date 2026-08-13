@@ -1,0 +1,69 @@
+# CI/CD del bundle de demanda de repuestos.
+#
+# Este workflow no corre en el taller ni en este repositorio: vive en ci/ a
+# propósito. Para activarlo en su repositorio, copiénlo a
+# .github/workflows/deploy.yml.
+#
+# Secretos que necesita configurados en el repositorio:
+#   DATABRICKS_HOST_DEV, DATABRICKS_CLIENT_ID_DEV, DATABRICKS_CLIENT_SECRET_DEV
+#   DATABRICKS_HOST_PROD, DATABRICKS_CLIENT_ID_PROD, DATABRICKS_CLIENT_SECRET_PROD
+#
+# Se autentica con service principal (OAuth machine to machine), no con un token
+# personal. Un pipeline que corre con el token de una persona se cae el día que
+# esa persona rota su token o se va.
+
+name: deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # En cada pull request: solo valida. No despliega nada.
+  validar:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_DEV }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_DEV }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: Validar el bundle
+        run: databricks bundle validate -t dev
+
+  # Al fusionar a main: despliega a dev y corre el scoring una vez para
+  # verificar que el despliegue quedó funcional.
+  desplegar_dev:
+    if: github.event_name == 'push'
+    needs: validar
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_DEV }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_DEV }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - run: databricks bundle deploy -t dev
+      - name: Corrida de verificación
+        run: databricks bundle run job_scoring -t dev
+
+  # Producción requiere aprobación manual. El gate está en la configuración del
+  # environment "prod" de GitHub, con los revisores requeridos.
+  desplegar_prod:
+    if: github.event_name == 'push'
+    needs: desplegar_dev
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_PROD }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_PROD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - run: databricks bundle deploy -t prod
