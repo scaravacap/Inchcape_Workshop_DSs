@@ -182,8 +182,8 @@ corridas es la herramienta más subestimada de MLflow.
 **Objetivo:** que el modelo deje de vivir en tu notebook y pase a ser un activo
 gobernado, con versión, linaje y permisos.
 
-**Qué hacer:** registrá el mejor modelo en Unity Catalog, con nombre de tres
-partes.
+**Qué hacer:** registrá el mejor modelo en Unity Catalog. Lo que cambia respecto
+de un registro común es el nombre de tres partes, catálogo, esquema y modelo:
 
 ```python
 import mlflow
@@ -208,6 +208,12 @@ Cuatro cosas que hay que hacer y que casi nadie hace:
 4. **El linaje.** Entrá al modelo en el Catalog Explorer y mirá la pestaña de
    linaje. Tiene que verse la tabla de entrenamiento que lo alimentó.
 
+Esas tres líneas de arriba son para que veas la forma del nombre. Lo que corrés
+es el prompt de
+[PROMPTS.md, sección 4](PROMPTS.md#4-registro-en-unity-catalog), que pide el
+código completo con las cuatro cosas adentro y termina cargando el modelo por
+alias para probar que la firma acepta la entrada.
+
 **Cómo sabés que funcionó:** el modelo aparece en el Catalog Explorer bajo
 `inchcape_workshop.ml`, con su versión 1, su alias `@campeon`, su firma y su
 linaje hacia la tabla de variables.
@@ -223,13 +229,21 @@ otro Data Product.
 
 **Qué hacer:**
 
-1. Escribí el notebook de scoring: carga el modelo por alias, arma las variables
-   de la última semana disponible, predice el horizonte de cuatro semanas y
-   escribe en `inchcape_workshop.ml.prediccion_demanda`.
+1. Escribí el notebook de scoring con
+   [PROMPTS.md, sección 5.1](PROMPTS.md#5-scoring-y-data-product): carga el modelo
+   por alias, arma las variables de la última semana disponible, predice el
+   horizonte de cuatro semanas y escribe en
+   `inchcape_workshop.ml.prediccion_demanda`. Guardalo con un nombre que te
+   acuerdes, porque el job del punto 4 va a apuntar a ese path.
 2. La tabla de predicciones lleva la versión del modelo en una columna. Cuando
    alguien pregunte por qué la predicción cambió, la respuesta tiene que estar en
    la tabla, no en tu memoria.
-3. Documentá y clasificá la tabla como Data Product:
+3. Documentá y clasificá la tabla como Data Product. Las etiquetas de abajo son
+   una parte. [PROMPTS.md, sección 5.2](PROMPTS.md#5-scoring-y-data-product)
+   completa el producto con los `COMMENT`, los `GRANT` para que el negocio lea sin
+   modificar, y la vista `vw_riesgo_quiebre`, que cruza la predicción con el
+   inventario y el punto de reorden. Esa vista es la que de verdad abre el equipo
+   de compras: la tabla de predicciones es el insumo, la vista es el producto.
 
 ```sql
 ALTER TABLE inchcape_workshop.ml.prediccion_demanda SET TAGS (
@@ -243,9 +257,17 @@ ALTER TABLE inchcape_workshop.ml.prediccion_demanda SET TAGS (
 
 4. Creá el job. En Free Edition no vamos a desplegar con Asset Bundles, así que lo
    creamos con el SDK desde el mismo notebook, que es la versión programática de lo
-   mismo. El código está en
-   [notebooks/03_crear_job_scoring.py](notebooks/03_crear_job_scoring.py) y no
-   requiere nada instalado: el SDK ya viene en el runtime y se autentica solo.
+   mismo. Pedíselo a Genie Code con
+   [PROMPTS.md, sección 5.3](PROMPTS.md#5-scoring-y-data-product), donde le pasás
+   el path de tu notebook de scoring y le pedís que el job quede pausado y sea
+   idempotente. El SDK ya viene en el runtime y se autentica solo, así que no hay
+   que instalar ni configurar nada.
+
+   Si preferís no escribirlo, el mismo job está resuelto en
+   [notebooks/03_crear_job_scoring.py](notebooks/03_crear_job_scoring.py). Antes de
+   correrlo cambiá la constante `NOTEBOOK_SCORING` por el path real de tu notebook
+   del punto 1: viene apuntando a `/Workspace/Users/<vos>/inchcape/02_scoring_demanda`,
+   que es donde lo guardé yo, no necesariamente donde lo guardaste vos.
 
 **Cómo sabés que funcionó:** el job aparece en **Jobs y Pipelines**, lo disparás a
 mano, termina en verde, y `prediccion_demanda` tiene las predicciones de las
@@ -297,6 +319,13 @@ más que los comandos:
    negocio disfrazada de comando. Necesita un dueño con nombre y una métrica de
    corte acordada antes de necesitarla.
 
+Los tres prompts de [PROMPTS.md, sección 6](PROMPTS.md#6-mlops-y-cicd) sirven para
+leer estos archivos con Genie Code al lado, hoy acá o el lunes en su entorno. La
+6.1 compara `dev` contra `prod` y dice qué le falta al bundle para una producción
+real. La 6.2 recorre el flujo de CI/CD y qué secretos necesita configurados. La
+6.3 redacta la política de promoción de la tercera discusión, con nombres de rol y
+no de persona, que es el entregable que se pueden llevar escrito.
+
 **Databricks Connect**, para desarrollar en VS Code contra el cómputo del
 workspace, se los muestro en demo. El archivo de configuración está en
 [docs/databricks_connect.md](docs/databricks_connect.md) para cuando lo quieran
@@ -332,12 +361,13 @@ La tercera respuesta es la que quiero escuchar en el cierre de la tarde.
 ## Mapa del repositorio
 
 - [HISTORIA.md](HISTORIA.md), el caso de negocio y el modelo de datos. Leelo primero.
-- [PROMPTS.md](PROMPTS.md), todos los prompts de los siete pasos, listos para copiar.
+- [PROMPTS.md](PROMPTS.md), todos los prompts del recorrido, listos para copiar.
 - [SKILLS.md](SKILLS.md), las instrucciones que le tenés que dar a Genie Code para
   que trabaje con las convenciones de ciencia de datos de Inchcape.
 - [notebooks/00_setup_datos.sql](notebooks/00_setup_datos.sql), el generador de datos.
 - [notebooks/03_crear_job_scoring.py](notebooks/03_crear_job_scoring.py), el job de
-  scoring creado con el SDK, sin salir del navegador.
+  scoring ya resuelto con el SDK, por si preferís no pedírselo a Genie Code.
+  Ajustá `NOTEBOOK_SCORING` antes de correrlo.
 - [databricks.yml](databricks.yml) y [resources/](resources/), el bundle para
   llevar a su entorno.
 - [ci/github-actions-deploy.yml](ci/github-actions-deploy.yml), el pipeline de CI/CD.
