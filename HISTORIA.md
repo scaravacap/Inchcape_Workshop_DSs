@@ -36,13 +36,13 @@ sobre un maestro sucio, no.
 - La venta de repuestos de Nippon Parts pasa de cerca de **1.8 millones de
   dólares mensuales a 385 mil en marzo**, y recupera en mayo.
 - Los quiebres de stock suben de un **4% de las combinaciones punto por repuesto
-  a un 10.5%** en marzo.
+  a un 9.8%** en marzo.
 - Las órdenes de taller que se quedan esperando repuesto pasan de un promedio de
-  **1.6 horas de espera a 6.9 horas**.
-- El cumplimiento de SLA cae del 100% al 93.6%.
+  **1.6 horas de espera a 8.0 horas**.
+- El cumplimiento de SLA cae del 100% al 92.4%.
 - El impacto en plata, valorizando las horas de bahía detenidas a la tarifa de
-  cada punto, es de **998 mil dólares en las seis semanas del incidente**, sobre
-  un total de 2.56 millones en los doce meses.
+  cada punto, es de **1.14 millones de dólares en las seis semanas del incidente**,
+  sobre un total de 2.69 millones en los doce meses.
 
 ## Y la PMO, en el medio
 

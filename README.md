@@ -140,7 +140,7 @@ producción. Genie Code no te va a avisar de esto solo, hay que pedírselo. El p
 de [PROMPTS.md, sección 2](PROMPTS.md#2-variables) lo pide explícitamente.
 
 **Cómo sabés que funcionó:** tu tabla de entrenamiento tiene alrededor de
-**37 mil filas** con grano de semana por punto por familia, y ninguna variable
+**59 mil filas** con grano de semana por punto por familia, y ninguna variable
 usa información posterior a la fecha de la fila. Verificá lo segundo con la
 consulta de control que viene en el prompt.
 
