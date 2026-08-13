@@ -119,8 +119,8 @@ print(f"{w.config.host}/jobs/{job_id}/runs/{corrida.run_id}")
 
 # MAGIC %sql
 # MAGIC SELECT modelo_version,
-# MAGIC        min(semana) AS desde,
-# MAGIC        max(semana) AS hasta,
+# MAGIC        min(semana_predicha) AS desde,
+# MAGIC        max(semana_predicha) AS hasta,
 # MAGIC        count(*) AS filas,
 # MAGIC        round(sum(demanda_predicha)) AS unidades_predichas
 # MAGIC FROM inchcape_workshop.ml.prediccion_demanda

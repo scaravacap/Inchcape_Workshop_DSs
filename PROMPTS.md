@@ -90,9 +90,25 @@ predecir ni de semanas posteriores. Todas las ventanas son estrictamente
 anteriores. Usá window functions con el rango correcto y explicame en un comentario
 por qué el rango que elegiste no filtra el futuro.
 
-Escribila en inchcape_workshop.ml.features_demanda y al final dame el conteo de
-filas y de columnas.
+Escribila en inchcape_workshop.ml.features_demanda y que sea una feature table de
+Unity Catalog en serio, no una tabla suelta:
+
+- Clave primaria declarada sobre dealer_id, familia y semana, con esas tres
+  columnas NOT NULL.
+- COMMENT en la tabla y en cada columna. El de la tabla dice el grano y deja
+  escrito que todas las ventanas son anteriores a la semana de la fila.
+- Etiquetas: dominio posventa, capa feature, dueño data-science-andina,
+  refresco semanal.
+
+Descartá las filas donde el rezago de trece semanas todavía no exista, en vez de
+rellenarlas. Al final dame el conteo de filas, el de columnas y el rango de
+semanas.
 ```
+
+Una nota de sintaxis que ahorra un rebote: Spark no deja extender una ventana
+nombrada con `ROWS BETWEEN`. Si Genie Code escribe `WINDOW w AS (...)` y después
+`OVER (w ROWS BETWEEN 4 PRECEDING AND 1 PRECEDING)`, falla con un error de
+sintaxis poco claro. Pegale el error y pedile que escriba cada `OVER` completo.
 
 ### 2.2 Control de fuga de información
 
@@ -138,11 +154,20 @@ Explicame por qué un train_test_split aleatorio estaría mal acá.
 ### 3.2 El modelo de árboles
 
 ```
-Ahora el modelo. Usá solamente lo que ya viene en el runtime de ML: scikit-learn,
-pandas, mlflow. No propongas pip install de nada.
+Ahora el modelo, con scikit-learn, pandas y mlflow.
 
+- Arrancá el notebook con
+  %pip install --upgrade "mlflow[databricks]" "scikit-learn==1.5.2" --quiet
+  y después %restart_python. La versión de scikit-learn va fijada porque el
+  modelo se serializa con la versión que lo entrena, y el job de scoring tiene
+  que abrirlo con la misma.
 - HistGradientBoostingRegressor de scikit-learn, con las categóricas codificadas
-  con OneHotEncoder dentro de un Pipeline.
+  con OneHotEncoder dentro de un Pipeline. El encoder tiene que devolver matriz
+  densa, con sparse_output=False: HistGradientBoosting no acepta matriz dispersa
+  y el Pipeline revienta recién al hacer fit.
+- Al guardar el modelo con mlflow.sklearn.log_model, pasá
+  serialization_format="cloudpickle". Es el formato que carga igual desde un
+  notebook, desde un job y desde un endpoint de serving.
 - Grilla chica de hiperparámetros: tres combinaciones, moviendo learning_rate y
   max_iter. Estoy en Free Edition con cuota diaria, así que no quiero una búsqueda
   grande.
@@ -180,7 +205,15 @@ sus parámetros lado a lado, y me muestre solo lo que difiere.
 Quiero registrar la mejor corrida como modelo en Unity Catalog. Dame el código
 completo:
 
-1. mlflow.set_registry_uri apuntando a Unity Catalog.
+0. Arrancá el notebook con
+   %pip install --upgrade "mlflow[databricks]" "scikit-learn==1.5.2" --quiet
+   y después %restart_python. La versión de MLflow que trae el runtime no puede
+   subir los artefactos del modelo al almacenamiento de Unity Catalog, y la de
+   scikit-learn va fijada para que el modelo cargue igual desde el job del
+   Paso 5.
+1. mlflow.set_registry_uri("databricks-uc") como primera instrucción de MLflow,
+   antes de set_experiment y antes de cualquier log_model. Si va después, en
+   cómputo serverless falla con CONFIG_NOT_AVAILABLE.
 2. Crear el esquema inchcape_workshop.ml si no existe.
 3. Registrar el modelo como inchcape_workshop.ml.demanda_repuestos.
 4. Escribir la descripción de la versión con el periodo de datos, el MAE en
@@ -211,8 +244,30 @@ Escribime el notebook de scoring. Tiene que:
    produjo, y el timestamp de la corrida.
 5. Ser idempotente: si corre dos veces la misma semana, no duplica filas.
 
+Dos cosas del entorno: el notebook arranca con
+%pip install --upgrade "mlflow[databricks]" "scikit-learn==1.5.2" --quiet
+y %restart_python, con la misma versión de scikit-learn que usé para entrenar, y
+set_registry_uri("databricks-uc") va antes que cualquier otra llamada a MLflow.
+
 Al final, la consulta de control que verifica cantidad de filas y rango de fechas.
 ```
+
+Ese `scikit-learn==1.5.2` tiene que ser **la misma versión con la que entrenaste**.
+Este notebook lo va a correr un job programado, y un job puede arrancar con un
+runtime distinto al de tu sesión interactiva. Cuando eso pasa, el modelo no carga
+y el error habla de `__pyx_unpickle_CyHalfSquaredError` o de tipos no confiables,
+que no se parece en nada a "cambió la versión de scikit-learn".
+
+El horizonte de cuatro semanas se construye hacia adelante: para la semana 2, el
+rezago de una semana es la predicción de la semana 1, no un dato real. Si el
+código que te propone ignora eso y usa el mismo vector de variables para las
+cuatro, pedíselo explícito.
+
+Cuando la predicción falle con `Can not safely convert int64 to int32`, es la
+firma del modelo haciendo su trabajo: pandas produce enteros de 64 bits y la firma
+fijó 32. Se arregla con `.astype("int32")` en esa columna. Miralo bien antes de
+corregirlo: es exactamente el cambio de esquema silencioso que la firma existe
+para atrapar.
 
 ### 5.2 El Data Product
 
@@ -230,7 +285,18 @@ consumir. Convertila en un Data Product:
    inventario actual y el punto de reorden, y liste las combinaciones de punto y
    repuesto con riesgo de quiebre en las próximas cuatro semanas. Esa vista es lo
    que de verdad le sirve al equipo de compras.
+
+   El criterio de riesgo es este: el stock actual menos la demanda pronosticada de
+   las cuatro semanas queda por debajo del punto de reorden. No uses "la demanda
+   supera el stock", que avisa cuando ya es tarde. Ordenala por cuánto se hunde
+   bajo el punto de reorden, e incluí el nombre y el país del punto para que se
+   pueda accionar sin otro join.
 ```
+
+Sobre el inventario: `fact_stock` está al grano de material y la predicción al de
+familia, así que hay que agregar el stock a familia y quedarse con la última foto
+disponible, `max(fecha_snapshot)`. Si el resultado te da tres o cuatro filas en vez
+de unas cincuenta, se coló el criterio equivocado.
 
 ### 5.3 El job con el SDK
 
@@ -251,9 +317,85 @@ El SDK ya viene en el runtime y se autentica solo dentro del notebook, así que 
 me pidas configurar tokens.
 ```
 
-## 6. MLOps y CI/CD
+### 5.4 La alerta sobre el riesgo de quiebre
 
-### 6.1 Revisión del bundle
+```
+Quiero que compras se entere sin entrar a mirar la vista. Creame una alerta de
+Databricks SQL sobre inchcape_workshop.ml.vw_riesgo_quiebre.
+
+- La consulta cuenta las combinaciones en riesgo.
+- Dispara cuando ese conteo sea mayor que cero.
+- Corre los lunes a las 7 de la mañana, zona horaria America/Bogota, y queda
+  pausada al crearse.
+- Nombre: Riesgo de quiebre en las proximas 4 semanas.
+
+Decime también dónde se configura el destinatario y qué pasa con la alerta cuando
+el job de scoring no corrió esa semana: quiero saber si me avisa de un problema
+real o del silencio.
+```
+
+## 6. Model Serving y AI Gateway
+
+### 6.1 Publicar el modelo como endpoint
+
+```
+Quiero servir inchcape_workshop.ml.demanda_repuestos como un endpoint de Model
+Serving, con el SDK de Python de Databricks desde este notebook. El SDK ya viene
+en el runtime y se autentica solo, no me pidas configurar tokens.
+
+1. Resolvé qué versión tiene hoy el alias campeon con
+   w.model_versions.get_by_alias, y usá esa versión en la configuración.
+2. Creá el endpoint inchcape-demanda-repuestos, tamaño Small, con escala a cero
+   habilitada, y esperá a que quede listo. Si el endpoint ya existe, actualizá su
+   configuración en vez de fallar.
+3. Encima, aplicá AI Gateway con w.serving_endpoints.put_ai_gateway: seguimiento
+   de uso activado y un límite de 100 llamadas por minuto para todo el endpoint.
+4. Al final, consultá el endpoint con una fila real de
+   inchcape_workshop.ml.features_demanda y mostrame la predicción.
+
+Después decime dos cosas: qué gano apuntando al alias en vez de fijar el número de
+versión a mano, y qué le pasa a la primera llamada cuando el endpoint estuvo sin
+tráfico.
+```
+
+Aprovisionar tarda entre cuatro y quince minutos la primera vez. La llamada que
+espera es `create_and_wait`, así que la celda se queda ocupada: dejala corriendo y
+seguí leyendo mientras.
+
+### 6.2 Comprobar que el endpoint y el notebook dan lo mismo
+
+```
+Quiero verificar que el endpoint devuelve exactamente lo mismo que el modelo
+cargado en el notebook, porque si difiere hay una transformación perdida en el
+camino.
+
+Escribime el código que tome tres filas de inchcape_workshop.ml.features_demanda,
+las prediga de las dos formas, con mlflow.pyfunc.load_model sobre
+models:/inchcape_workshop.ml.demanda_repuestos@campeon y con una llamada al
+endpoint, y me muestre las dos columnas de resultados lado a lado con la
+diferencia.
+
+Si hay diferencia, decime en qué orden revisarías las causas.
+```
+
+### 6.3 Qué cuesta y cuándo no usarlo
+
+```
+Tengo el pronóstico disponible de dos formas: una tabla que se refresca con un job
+semanal, y este endpoint. Ayudame a decidir cuál usa cada consumidor.
+
+Armame una comparación corta entre servir en batch a una tabla y servir en tiempo
+real por endpoint, sobre estas dimensiones: latencia, costo cuando no hay tráfico,
+qué pasa si el modelo cambia de versión, trazabilidad de lo que se respondió, y
+qué se rompe si el consumidor duplica su volumen de golpe.
+
+Después decime, para el caso de Inchcape, qué consumidor concreto pondría en cada
+canal y por qué.
+```
+
+## 7. MLOps y CI/CD
+
+### 7.1 Revisión del bundle
 
 ```
 Revisá el archivo databricks.yml de este repositorio y decime, para el target dev
@@ -262,7 +404,7 @@ Después decime tres cosas que le faltan para un entorno de producción real de 
 empresa como Inchcape.
 ```
 
-### 6.2 El pipeline de CI/CD
+### 7.2 El pipeline de CI/CD
 
 ```
 Revisá ci/github-actions-deploy.yml y explicame el flujo completo: qué corre en
@@ -270,7 +412,7 @@ un pull request, qué corre al fusionar a main, y qué requiere aprobación manu
 Después decime qué secretos necesita configurados y qué pasa si falta uno.
 ```
 
-### 6.3 Promoción de modelos
+### 7.3 Promoción de modelos
 
 ```
 Quiero escribir la política de promoción de modelos de Inchcape. Ayudame a

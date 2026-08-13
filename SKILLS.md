@@ -16,11 +16,38 @@ asistente. Aplican a todo el código que Genie Code escriba para vos.
 # Taller Inchcape Andina, perfil Data Science
 
 ## Plataforma
-Databricks Free Edition, cómputo serverless, sin GPU y con la salida a internet
-restringida. Usá solamente lo que ya viene en el runtime de ML: mlflow,
-scikit-learn, pandas, numpy, pyspark, matplotlib. Nunca propongas pip install de
-paquetes externos: fallan o se cuelgan. Si la única solución razonable necesita un
-paquete externo, decilo y ofrecé la alternativa con lo que hay.
+Databricks Free Edition, cómputo serverless, sin GPU. Trabajá con lo que ya viene
+en el runtime: mlflow, scikit-learn, pandas, numpy, pyspark, matplotlib. pip
+install contra PyPI funciona, pero cada instalación cuesta tiempo de la cuota:
+proponela solo cuando de verdad haga falta y decime por qué.
+
+Hay una instalación que sí es obligatoria. El runtime trae MLflow 2.11, que no
+puede registrar modelos en Unity Catalog porque falla al subir los artefactos.
+Todo notebook que entrene, registre, cargue o sirva un modelo arranca con estas
+dos líneas y nada de MLflow antes de ellas:
+
+    %pip install --upgrade "mlflow[databricks]" "scikit-learn==1.5.2" --quiet
+    %restart_python
+
+La versión de scikit-learn va fijada y tiene que ser la misma en entrenamiento y
+en scoring. El modelo se serializa con la versión que lo entrena, y el job puede
+arrancar con un runtime distinto al del notebook interactivo; cuando eso pasa el
+modelo no carga y el error habla de __pyx_unpickle o de tipos no confiables.
+Por lo mismo, mlflow.sklearn.log_model va siempre con
+serialization_format="cloudpickle".
+
+Y en la primera celda de código, antes de set_experiment y de cualquier log_model:
+
+    mlflow.set_registry_uri("databricks-uc")
+
+Si set_registry_uri va después, el notebook falla con CONFIG_NOT_AVAILABLE porque
+MLflow consulta una configuración de Spark bloqueada en serverless.
+
+Dos cosas más de este entorno, para que no las propongas: las tablas de inferencia
+de AI Gateway no están habilitadas, y la librería databricks-feature-engineering no
+funciona acá por conflictos de dependencias. Una feature table se hace con SQL
+nativo de Unity Catalog: tabla Delta con clave primaria declarada, comentarios y
+etiquetas.
 
 ## Datos
 Catálogo: inchcape_workshop
@@ -53,7 +80,14 @@ Catálogo: inchcape_workshop
   mlflow.set_registry_uri("databricks-uc").
 - Todo modelo registrado lleva firma inferida con infer_signature y un ejemplo de
   entrada.
-- El scoring carga el modelo por alias, nunca por número de versión.
+- El scoring carga el modelo por alias, nunca por número de versión. Lo mismo el
+  endpoint de serving: se resuelve el alias a su versión al crearlo.
+- Las tablas que produzco llevan COMMENT en la tabla y en cada columna, y
+  etiquetas de dominio y dueño. Una tabla sin comentarios no sale de mi notebook.
+- Las feature tables llevan clave primaria declarada, con las columnas de la
+  clave en NOT NULL.
+- HistGradientBoostingRegressor no acepta matriz dispersa: el OneHotEncoder va
+  con sparse_output=False.
 - Las transformaciones van dentro de un Pipeline de scikit-learn, no aplicadas a
   mano antes del fit. Si el preprocesamiento queda fuera del modelo, el scoring lo
   tiene que replicar y ahí se rompe.

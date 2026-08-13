@@ -1,12 +1,17 @@
 # Bundle del modelo de demanda de repuestos, Inchcape Andina.
 #
 # Este archivo NO se despliega en Free Edition. Está acá para llevárselo a su
-# entorno y para la conversación del Paso 6: la diferencia entre dev y prod es
+# entorno y para la conversación del Paso 7: la diferencia entre dev y prod es
 # lo que hay que discutir, no la sintaxis.
 #
 #   databricks bundle validate -t dev
 #   databricks bundle deploy -t dev
 #   databricks bundle run job_scoring -t dev
+#
+# El target dev valida contra cualquier workspace apuntando el host. El target
+# prod supone que ya existe el service principal sp-inchcape-datascience y los
+# grupos negocio-posventa y data-science-andina: hasta que existan, validarlo
+# falla, y esa falla es la lista de lo que hay que crear antes de desplegar.
 
 bundle:
   name: inchcape_demanda
@@ -48,7 +53,10 @@ targets:
     mode: production
     workspace:
       host: https://adb-XXXXXXXXXXXXXXXX.XX.azuredatabricks.net
-      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+      # La carpeta del despliegue es la del service principal que corre el job, no
+      # /Workspace/Shared: ahí adentro cualquier usuario del workspace podría
+      # reescribir el código que corre en producción.
+      root_path: /Workspace/Users/sp-inchcape-datascience/.bundle/${bundle.name}/${bundle.target}
     run_as:
       service_principal_name: sp-inchcape-datascience
     variables:
