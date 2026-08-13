@@ -70,10 +70,12 @@ Catálogo: inchcape_workshop
 - Respondé en español.
 ```
 
-## 2. Instrucciones del espacio de Genie sobre el catálogo del taller
+## 2. Instrucciones del Genie Agent sobre el catálogo del taller
 
-Van en la configuración del espacio de Genie, sección **Instructions**. Sirven para
-la exploración del Paso 1 sin escribir SQL.
+Van en la configuración del Genie Agent, sección **Instructions**. Este bloque es
+opcional en el recorrido: el Paso 1 explora con Python en el notebook, y si
+además querés hacerle preguntas a las tablas en español, creá un Genie Agent
+sobre `inchcape_workshop` y pegale este texto.
 
 ```text
 # Contexto de negocio: Inchcape Andina, posventa y repuestos
